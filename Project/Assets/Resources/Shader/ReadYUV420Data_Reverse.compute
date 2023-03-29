@@ -1,0 +1,114 @@
+#pragma kernel ReadYUV420Data_Reverse
+//读取GPU端的Texture像素数据（上下颠倒），转换为YUV格式数据，传给CPU
+
+Texture2D<float4> InputTexture;
+RWBuffer<uint> OutputBuffer;
+bool useLinear;
+#define GAMA_1 0.45
+
+uint CalcValueY(uint yIndex, uint width)
+{
+	uint3 tid;
+	tid.x = yIndex % width;
+	tid.y = yIndex / width;
+	vector fRGB = InputTexture[float2(tid.x,tid.y)];
+	if (useLinear)
+	{
+	    fRGB.r = pow(abs(fRGB.r), GAMA_1);
+	    fRGB.g = pow(abs(fRGB.g), GAMA_1);
+	    fRGB.b = pow(abs(fRGB.b), GAMA_1);
+	}
+	
+	uint rrr = fRGB.r * 255;
+	uint ggg = fRGB.g * 255;
+	uint bbb = fRGB.b * 255;
+	uint ret = (0.299 * rrr + 0.587 * ggg + 0.114 * bbb);
+	return ret;
+}
+
+uint CalcValueU(uint uIndex, uint width)
+{
+	uint3 tid;
+	tid.x = (uIndex % (width / 2)) * 2;
+	tid.y = (uIndex / (width / 2)) * 2;
+	vector fRGB = InputTexture[float2(tid.x,tid.y)];
+	if (useLinear)
+	{
+	    fRGB.r = pow(abs(fRGB.r), GAMA_1);
+	    fRGB.g = pow(abs(fRGB.g), GAMA_1);
+	    fRGB.b = pow(abs(fRGB.b), GAMA_1);
+	}
+	
+	uint rrr = fRGB.r * 255;
+	uint ggg = fRGB.g * 255;
+	uint bbb = fRGB.b * 255;
+    uint ret = (-0.169 * rrr - 0.331 * ggg + 0.5 * bbb + 128);
+	return ret;
+}
+
+uint CalcValueV(uint vIndex, uint width)
+{
+	uint3 tid;
+	tid.x = (vIndex % (width / 2)) * 2;
+	tid.y = (vIndex / (width / 2)) * 2 + 1;
+	vector fRGB = InputTexture[float2(tid.x,tid.y)];
+	if (useLinear)
+	{
+	    fRGB.r = pow(abs(fRGB.r), GAMA_1);
+	    fRGB.g = pow(abs(fRGB.g), GAMA_1);
+	    fRGB.b = pow(abs(fRGB.b), GAMA_1);
+	}
+	
+	uint rrr = fRGB.r * 255;
+	uint ggg = fRGB.g * 255;
+	uint bbb = fRGB.b * 255;
+    uint ret = (0.5 * rrr - 0.419 * ggg - 0.081 * bbb + 128);
+	return ret;
+}
+
+[numthreads(8, 8, 1)]
+void ReadYUV420Data_Reverse(uint3 id : SV_DispatchThreadID)
+{
+	uint w, h;
+	InputTexture.GetDimensions(w, h);
+	uint ySize = w * h / 4;				//要操作的uint数组中，Y分量的size仅为uint的size的1/4
+	uint index = (id.x + id.y * w);		//线程对应的像素index
+	
+	if (index < ySize)	//Y分量，每个uint保存4个像素的Y
+	{
+		uint yIndex = index * 4;
+		uint yy0 = CalcValueY(yIndex, w);
+		uint yy1 = CalcValueY(yIndex + 1, w);
+		uint yy2 = CalcValueY(yIndex + 2, w);
+		uint yy3 = CalcValueY(yIndex + 3, w);
+		
+		uint yyy = (yy0 & 0x000000ff) | ((yy1<<8) & 0x0000ff00) | ((yy2<<16) & 0x00ff0000) | ((yy3<<24) & 0xff000000);
+		OutputBuffer[index] = yyy;
+	}
+	else if ((index >= ySize) && index < (ySize * 5 / 4))		//U分量
+	{
+		uint uIndex = index * 4 - ySize * 4;
+		uint uu0 = CalcValueU(uIndex, w);
+		uint uu1 = CalcValueU(uIndex + 1, w);
+		uint uu2 = CalcValueU(uIndex + 2, w);
+		uint uu3 = CalcValueU(uIndex + 3, w);
+		
+		uint uuu = (uu0 & 0x000000ff) | ((uu1<<8) & 0x0000ff00) | ((uu2<<16) & 0x00ff0000) | ((uu3<<24) & 0xff000000);
+		OutputBuffer[index] = uuu;
+	}
+	else if ((index >= (ySize * 5 / 4)) && index < (ySize * 3 / 2))		//V分量
+	{
+		uint vIndex = index * 4 - ySize * 5;
+		uint vv0 = CalcValueV(vIndex, w);
+		uint vv1 = CalcValueV(vIndex + 1, w);
+		uint vv2 = CalcValueV(vIndex + 2, w);
+		uint vv3 = CalcValueV(vIndex + 3, w);
+		
+		uint vvv = (vv0 & 0x000000ff) | ((vv1<<8) & 0x0000ff00) | ((vv2<<16) & 0x00ff0000) | ((vv3<<24) & 0xff000000);
+		OutputBuffer[index] = vvv;
+	}
+	else if (index >= (ySize * 3 / 2))
+	{
+		return;
+	}
+}

@@ -1,0 +1,8 @@
+{
+  "name": "com.nd.living",
+  "displayName": "NDLivingModule",
+  "version": "1.0.0",
+  "unity": "2019.1",
+  "dependencies": {
+  }
+}
