@@ -1,2 +1,0 @@
-# ScreenshotDemo
-For RgbToYuv TestDemo
